@@ -62,29 +62,29 @@ mod entries;
 mod files;
 mod parser;
 
-use entries::Entries;
-use parser::{Config, Flags};
+use parser::Config;
+use files::Entries;
+use crate::files::Output;
 
 const USAGE: &str = "Usage: ls [OPTION]... [FILE]...\n\
 List information about the FILEs (the current directory by default).\n";
 
 fn main() {
-    let args = std::env::args().skip(1).collect::<Vec<String>>();
-    let config = Config::parse(Flags::new(&args));
-    if let Some(mut entries) = Entries::new(&config) {
-        if !config.show_dot {
-            entries = entries.hide_dots();
-        }
-        let mut output = entries.to_output();
-        if !config.dont_sort {
-            output = output.default_sort();
-        }
-        if !config.multi_line {
-            println!("{}", output.to_one_row())
-        } else {
-            println!("{}", output.to_multi_rows())
-        }
+    let config = Config::parse(std::env::args().skip(1).collect::<Vec<String>>());
+    let entries = Entries::new(&config.dir_name);
+    if config.all {
+        println!("{}", Output::new_full_info(&entries).show_multiple_rows());
     } else {
-        println!("directory not found!");
+        let mut output = if config.show_dot {
+            Output::new_color(&entries)
+        } else {
+            Output::new_hide_dots(&entries)
+        };
+        if config.multi_line {
+            println!("{}", output.show_multiple_rows());
+        } else {
+            println!("{}", output.show_single_row());
+        }
+        return;
     }
 }
