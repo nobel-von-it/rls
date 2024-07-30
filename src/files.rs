@@ -1,5 +1,7 @@
+use std::cmp::PartialEq;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::time::UNIX_EPOCH;
+
 use chrono::DateTime;
 
 // #[derive(Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
@@ -67,6 +69,7 @@ use chrono::DateTime;
 //         }
 //     }
 // }
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum FileKind {
     Dir,
     File,
@@ -98,13 +101,13 @@ pub enum Extensions {
     Txt,
     Json,
     Dot,
-    Other,
+    Other(String),
 }
 impl From<String> for Extensions {
     fn from(s: String) -> Self {
         let s = s.split_once(".").unwrap_or(("", "")).1.to_lowercase();
         if s.is_empty() {
-            return Self::Other;
+            return Self::Other("".to_string());
         }
         match s.as_str() {
             "rs" => Self::Rust,
@@ -117,7 +120,7 @@ impl From<String> for Extensions {
             "go" => Self::Go,
             "txt" => Self::Txt,
             "json" => Self::Json,
-            _ => Self::Other,
+            _ => Self::Other(s),
         }
     }
 }
@@ -144,6 +147,11 @@ impl std::fmt::Display for Permissions {
         write!(f, "{}", self.0)
     }
 }
+impl Permissions {
+    fn is_executable(&self) -> bool {
+        self.0.contains("x")
+    }
+}
 pub struct FileInfo {
     pub path: String,
     pub name: String,
@@ -152,6 +160,7 @@ pub struct FileInfo {
     pub extension: Extensions,
     pub permissions: Permissions,
     pub size: u64,
+    pub link_target: Option<String>,
     pub nlink: u64,
     pub owner: String,
     pub group: String,
@@ -175,6 +184,7 @@ impl Ord for FileInfo {
         self.name.cmp(&other.name)
     }
 }
+
 impl From<std::fs::DirEntry> for FileInfo {
     fn from(de: std::fs::DirEntry) -> Self {
         let metadata = de.metadata().unwrap();
@@ -193,11 +203,22 @@ impl From<std::fs::DirEntry> for FileInfo {
         let datetime: DateTime<chrono::Local> = (UNIX_EPOCH + std::time::Duration::from_secs(metadata.mtime() as u64)).into();
         let mtime_str = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
 
-        let colored_name = if metadata.is_dir() {
-            format!("\x1b[1;34m{}\x1b[0m", name.clone())
-        } else {
-            name.clone()
+        let colored_name = match kind {
+            FileKind::Dir => color_dir(&name),
+            FileKind::Symlink => color_symlink(&name),
+            _ => if kind == FileKind::File && permissions.is_executable() {
+                color_executable(&name)
+            } else {
+                name.clone()
+            }
         };
+
+        let link_target = if kind == FileKind::Symlink {
+            Some(color_dir(std::fs::read_link(&path).unwrap().to_str().unwrap()))
+        } else {
+            None
+        };
+
 
         Self {
             path,
@@ -208,24 +229,48 @@ impl From<std::fs::DirEntry> for FileInfo {
             permissions,
             size,
             nlink,
+            link_target,
             owner,
             group,
             mtime: mtime_str,
         }
     }
 }
+pub fn color_dir(name: &str) -> String {
+    format!("\x1b[1;34m{}\x1b[0m", name)
+}
+pub fn color_symlink(name: &str) -> String {
+    format!("\x1b[1;35m{}\x1b[0m", name)
+}
+pub fn color_executable(name: &str) -> String {
+    format!("\x1b[1;32m{}\x1b[0m", name)
+}
 impl FileInfo {
     pub fn to_string(&self) -> String {
-        format!(
-            "{:<10} {:<2} {:<4} {:<4} {:<6} {:<19} {}",
-            self.permissions,
-            self.nlink,
-            self.owner,
-            self.group,
-            self.size,
-            self.mtime,
-            self.colored_name,
-        )
+        if let Some(link_target) = &self.link_target {
+            format!(
+                "{:<10} {:<2} {:<4} {:<4} {:<6} {:<19} {} -> {}",
+                self.permissions,
+                self.nlink,
+                self.owner,
+                self.group,
+                self.size,
+                self.mtime,
+                self.colored_name,
+                link_target
+            )
+        } else {
+            format!(
+                "{:<10} {:<2} {:<4} {:<4} {:<6} {:<19} {}",
+                self.permissions,
+                self.nlink,
+                self.owner,
+                self.group,
+                self.size,
+                self.mtime,
+                self.colored_name,
+            )
+        }
     }
     pub fn colored_file_name(&self) -> String {
         self.colored_name.clone()
@@ -238,7 +283,9 @@ pub struct Entries(Vec<FileInfo>);
 impl Entries {
     pub fn new(path: &str) -> Self {
         let entries = std::fs::read_dir(path).unwrap();
-        Self(entries.map(|f| f.unwrap().into()).collect())
+        let mut file_infos = entries.map(|f| f.unwrap().into()).collect::<Vec<FileInfo>>();
+        file_infos.sort();
+        Self(file_infos)
     }
     pub fn show(&self) -> String {
         self.0
@@ -254,7 +301,6 @@ impl Entries {
             .collect::<Vec<String>>()
             .join(" ")
     }
-
 }
 pub struct Output(Vec<String>);
 impl Output {
