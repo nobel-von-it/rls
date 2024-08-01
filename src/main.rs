@@ -1,3 +1,8 @@
+use files::Entries;
+use parser::Config;
+
+use crate::files::Output;
+
 // const USAGE: &str = "Usage: ls [OPTION]... [FILE]...\n\
 // List information about the FILEs (the current directory by default).\n\
 // Sort entries alphabetically if none of -cftuvSUX nor --sort is specified.\n\
@@ -62,20 +67,13 @@ mod entries;
 mod files;
 mod parser;
 
-use parser::Config;
-use files::Entries;
-use crate::files::Output;
-
-const USAGE: &str = "Usage: ls [OPTION]... [FILE]...\n\
-List information about the FILEs (the current directory by default).\n";
-
 fn main() {
     let config = Config::parse(std::env::args().skip(1).collect::<Vec<String>>());
     let entries = Entries::new(&config.dir_name);
     if config.all {
         println!("{}", Output::new_full_info(&entries).show_multiple_rows());
     } else {
-        let mut output = if config.show_dot {
+        let output = if config.show_dot {
             Output::new_color(&entries)
         } else {
             Output::new_hide_dots(&entries)
@@ -85,6 +83,5 @@ fn main() {
         } else {
             println!("{}", output.show_single_row());
         }
-        return;
     }
 }

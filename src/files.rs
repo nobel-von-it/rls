@@ -100,7 +100,6 @@ pub enum Extensions {
     Go,
     Txt,
     Json,
-    Dot,
     Other(String),
 }
 impl From<String> for Extensions {
@@ -175,7 +174,7 @@ impl Eq for FileInfo {}
 
 impl PartialOrd for FileInfo {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.name.partial_cmp(&other.name)
+        Some(self.cmp(other))
     }
 }
 
@@ -190,7 +189,11 @@ impl From<std::fs::DirEntry> for FileInfo {
         let metadata = de.metadata().unwrap();
 
         let name = de.file_name().to_str().unwrap().to_string();
-        let path = de.path().to_str().unwrap().to_string();
+        let path = std::fs::canonicalize(&name)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
 
         let extension = Extensions::from(name.clone());
         let kind = FileKind::from(metadata.file_type());
@@ -200,25 +203,29 @@ impl From<std::fs::DirEntry> for FileInfo {
         let owner = metadata.uid().to_string();
         let group = metadata.gid().to_string();
 
-        let datetime: DateTime<chrono::Local> = (UNIX_EPOCH + std::time::Duration::from_secs(metadata.mtime() as u64)).into();
+        let datetime: DateTime<chrono::Local> =
+            (UNIX_EPOCH + std::time::Duration::from_secs(metadata.mtime() as u64)).into();
         let mtime_str = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
 
         let colored_name = match kind {
-            FileKind::Dir => color_dir(&name),
-            FileKind::Symlink => color_symlink(&name),
-            _ => if kind == FileKind::File && permissions.is_executable() {
-                color_executable(&name)
-            } else {
-                name.clone()
+            FileKind::Dir => format!("\x1b[1;34m{}\x1b[0m", &name),
+            FileKind::Symlink => format!("\x1b[1;35m{}\x1b[0m", &name),
+            _ => {
+                if permissions.is_executable() {
+                    format!("\x1b[1;32m{}\x1b[0m", &name)
+                } else {
+                    name.clone()
+                }
             }
         };
-
         let link_target = if kind == FileKind::Symlink {
-            Some(color_dir(std::fs::read_link(&path).unwrap().to_str().unwrap()))
+            Some(format!(
+                "\x1b[1;35m{}\x1b[0m",
+                std::fs::read_link(&path).unwrap().to_str().unwrap(),
+            ))
         } else {
             None
         };
-
 
         Self {
             path,
@@ -236,19 +243,11 @@ impl From<std::fs::DirEntry> for FileInfo {
         }
     }
 }
-pub fn color_dir(name: &str) -> String {
-    format!("\x1b[1;34m{}\x1b[0m", name)
-}
-pub fn color_symlink(name: &str) -> String {
-    format!("\x1b[1;35m{}\x1b[0m", name)
-}
-pub fn color_executable(name: &str) -> String {
-    format!("\x1b[1;32m{}\x1b[0m", name)
-}
-impl FileInfo {
-    pub fn to_string(&self) -> String {
+impl std::fmt::Display for FileInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(link_target) = &self.link_target {
-            format!(
+            writeln!(
+                f,
                 "{:<10} {:<2} {:<4} {:<4} {:<6} {:<19} {} -> {}",
                 self.permissions,
                 self.nlink,
@@ -260,7 +259,8 @@ impl FileInfo {
                 link_target
             )
         } else {
-            format!(
+            writeln!(
+                f,
                 "{:<10} {:<2} {:<4} {:<4} {:<6} {:<19} {}",
                 self.permissions,
                 self.nlink,
@@ -268,10 +268,12 @@ impl FileInfo {
                 self.group,
                 self.size,
                 self.mtime,
-                self.colored_name,
+                self.colored_name
             )
         }
     }
+}
+impl FileInfo {
     pub fn colored_file_name(&self) -> String {
         self.colored_name.clone()
     }
@@ -283,7 +285,9 @@ pub struct Entries(Vec<FileInfo>);
 impl Entries {
     pub fn new(path: &str) -> Self {
         let entries = std::fs::read_dir(path).unwrap();
-        let mut file_infos = entries.map(|f| f.unwrap().into()).collect::<Vec<FileInfo>>();
+        let mut file_infos = entries
+            .map(|f| f.unwrap().into())
+            .collect::<Vec<FileInfo>>();
         file_infos.sort();
         Self(file_infos)
     }
@@ -310,6 +314,15 @@ impl Output {
                 .0
                 .iter()
                 .map(|f| f.to_string())
+                .collect::<Vec<String>>(),
+        )
+    }
+    pub fn new_path(entries: &Entries) -> Self {
+        Self(
+            entries
+                .0
+                .iter()
+                .map(|f| f.path.clone())
                 .collect::<Vec<String>>(),
         )
     }
