@@ -4,71 +4,6 @@ use std::time::UNIX_EPOCH;
 
 use chrono::DateTime;
 
-// #[derive(Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
-// pub enum Tokens {
-//     Dir(String),
-//     File(String),
-// }
-// impl From<std::fs::DirEntry> for Tokens {
-//     fn from(de: std::fs::DirEntry) -> Self {
-//         let ft = de.file_type().map_err(|e| eprintln!("error {e}")).unwrap();
-//         if ft.is_dir() {
-//             if let Some(dname) = de.file_name().to_str() {
-//                 return Self::Dir(dname.to_string());
-//             } else {
-//                 eprintln!("cant read dir name");
-//                 std::process::exit(1);
-//             }
-//         } else {
-//             if let Some(fname) = de.file_name().to_str() {
-//                 return Self::File(fname.to_string());
-//             } else {
-//                 eprintln!("cant read file name");
-//                 std::process::exit(1);
-//             }
-//         }
-//     }
-// }
-// impl std::fmt::Display for Tokens {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         match self {
-//             Tokens::Dir(dir) => write!(f, "{}", dir),
-//             Tokens::File(file) => write!(f, "{}", file),
-//         }
-//     }
-// }
-// impl Tokens {
-//     pub fn file_name(&self) -> String {
-//         match self {
-//             Tokens::Dir(dir) => format!("{}", dir),
-//             Tokens::File(file) => format!("{}", file),
-//         }
-//     }
-//     pub fn add_color(&self) -> String {
-//         match self {
-//             Tokens::Dir(dir) => format!("{}", dir.blue().bold().to_string()),
-//             Tokens::File(file) => format!("{}", file),
-//         }
-//     }
-//     pub fn is_empty(&self) -> bool {
-//         match self {
-//             Self::Dir(d) => d.is_empty(),
-//             Self::File(f) => f.is_empty(),
-//         }
-//     }
-//     pub fn is_dot(&self) -> bool {
-//         match self {
-//             Self::Dir(d) => d.starts_with("."),
-//             Self::File(f) => f.starts_with("."),
-//         }
-//     }
-//     pub fn is_dir(&self) -> bool {
-//         match self {
-//             Self::Dir(_) => true,
-//             Self::File(_) => false,
-//         }
-//     }
-// }
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum FileKind {
     Dir,
@@ -152,18 +87,18 @@ impl Permissions {
     }
 }
 pub struct FileInfo {
-    pub path: String,
-    pub name: String,
-    pub colored_name: String,
-    pub kind: FileKind,
-    pub extension: Extensions,
-    pub permissions: Permissions,
-    pub size: u64,
-    pub link_target: Option<String>,
-    pub nlink: u64,
-    pub owner: String,
-    pub group: String,
-    pub mtime: String,
+    path: String,
+    name: String,
+    colored_name: String,
+    kind: FileKind,
+    extension: Extensions,
+    permissions: Permissions,
+    size: u64,
+    link_target: Option<String>,
+    nlink: u64,
+    owner: String,
+    group: String,
+    mtime: String,
 }
 impl PartialEq for FileInfo {
     fn eq(&self, other: &Self) -> bool {
@@ -280,6 +215,9 @@ impl FileInfo {
     pub fn file_name(&self) -> String {
         self.name.clone()
     }
+    pub fn is_dot(&self) -> bool {
+        self.name.starts_with(".")
+    }
 }
 pub struct Entries(Vec<FileInfo>);
 impl Entries {
@@ -306,53 +244,38 @@ impl Entries {
             .join(" ")
     }
 }
-pub struct Output(Vec<String>);
+pub struct Output<I>
+where
+    I: Iterator<Item = String>,
+{
+    iter: I,
+}
 impl Output {
-    pub fn new_full_info(entries: &Entries) -> Self {
-        Self(
-            entries
-                .0
-                .iter()
-                .map(|f| f.to_string())
-                .collect::<Vec<String>>(),
-        )
+    pub fn new_fn<F>(e: &Entries, f: F) -> Self
+    where
+        F: FnMut(&FileInfo) -> String,
+    {
+        Self {
+            iter: e.0.iter().map(f),
+        }
     }
-    pub fn new_path(entries: &Entries) -> Self {
-        Self(
-            entries
-                .0
-                .iter()
-                .map(|f| f.path.clone())
-                .collect::<Vec<String>>(),
-        )
-    }
-    pub fn new_color(entries: &Entries) -> Self {
-        Self(
-            entries
-                .0
-                .iter()
-                .map(|f| f.colored_file_name())
-                .collect::<Vec<String>>(),
-        )
+    pub fn new_color(e: &Entries) -> Self {
+        Self::new_fn(e, |f| f.colored_name)
     }
     pub fn new_hide_dots(entries: &Entries) -> Self {
-        Self(
-            entries
+        Self {
+            iter: entries
                 .0
                 .iter()
                 .filter(|f| !f.name.starts_with("."))
-                .map(|f| f.colored_file_name())
-                .collect::<Vec<String>>(),
-        )
+                .map(|f| f.colored_file_name()),
+        }
     }
     pub fn new_no_color(entries: &Entries) -> Self {
-        Self(
-            entries
-                .0
-                .iter()
-                .map(|f| f.file_name())
-                .collect::<Vec<String>>(),
-        )
+        Self {
+
+        }
+        Self(entries.0.iter().map(|f| f.file_name()))
     }
     pub fn show_single_row(&self) -> String {
         self.0.join(" ")

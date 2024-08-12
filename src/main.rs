@@ -63,7 +63,7 @@ use crate::files::Output;
 //   -X                         sort alphabetically by entry extension\n\
 //   --help     display this help and exit\n\
 //   --version  output version information and exit";
-mod entries;
+
 mod files;
 mod parser;
 
@@ -71,10 +71,13 @@ fn main() {
     let config = Config::parse(std::env::args().skip(1).collect::<Vec<String>>());
     let entries = Entries::new(&config.dir_name);
     if config.all {
-        println!("{}", Output::new_full_info(&entries).show_multiple_rows());
+        println!(
+            "{}",
+            Output::new_fn(&entries, |f| f.to_string()).show_multiple_rows()
+        );
     } else {
         let output = if config.show_dot {
-            Output::new_color(&entries)
+            Output::new_fn(&entries, |f| f.colored_file_name())
         } else {
             Output::new_hide_dots(&entries)
         };
