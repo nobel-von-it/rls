@@ -250,7 +250,10 @@ where
 {
     iter: I,
 }
-impl Output {
+impl<I> Output<I>
+where
+    I: Iterator<Item = String>,
+{
     pub fn new_fn<F>(e: &Entries, f: F) -> Self
     where
         F: FnMut(&FileInfo) -> String,
@@ -272,9 +275,6 @@ impl Output {
         }
     }
     pub fn new_no_color(entries: &Entries) -> Self {
-        Self {
-
-        }
         Self(entries.0.iter().map(|f| f.file_name()))
     }
     pub fn show_single_row(&self) -> String {
